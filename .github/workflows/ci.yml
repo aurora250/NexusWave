@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+jobs:
+  linux:
+    name: Linux (build + tests)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: NexusWave
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.NEXUSFORCE_REPOSITORY }}
+          path: NexusForce
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libgtest-dev
+      - name: Build vcpkg (required by NexusForce)
+        run: |
+          git clone --depth 1 https://github.com/microsoft/vcpkg "$HOME/vcpkg"
+          "$HOME/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+      - name: Install NexusForce
+        working-directory: NexusWave
+        run: |
+          python3 scripts/install_nexusforce.py \
+            --source "$GITHUB_WORKSPACE/NexusForce" \
+            --prefix "$GITHUB_WORKSPACE/nexusforce-prefix" \
+            --build-dir "$GITHUB_WORKSPACE/nexusforce-build" \
+            --config Release --jobs 4
+      - name: Configure NexusWave
+        working-directory: NexusWave
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DNEXUSWAVE_NEXUSFORCE_PREFIX="$GITHUB_WORKSPACE/nexusforce-prefix"
+      - name: Build
+        working-directory: NexusWave
+        run: cmake --build build
+      - name: Test
+        working-directory: NexusWave
+        run: ctest --test-dir build --output-on-failure
+
+  format:
+    name: Format
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-19
+      - name: Check formatting
+        run: |
+          find src tests -name '*.cpp' -o -name '*.hpp' | xargs clang-format-19 --dry-run --Werror
+
+  windows:
+    name: Windows (compile only)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: NexusWave
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.NEXUSFORCE_REPOSITORY }}
+          path: NexusForce
+      - name: Build vcpkg
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/microsoft/vcpkg D:/vcpkg
+          D:/vcpkg/bootstrap-vcpkg.bat -disableMetrics
+      - name: Install NexusForce
+        working-directory: NexusWave
+        shell: pwsh
+        run: |
+          python scripts/install_nexusforce.py --source "$env:GITHUB_WORKSPACE/NexusForce" `
+            --prefix "$env:GITHUB_WORKSPACE/nexusforce-prefix" `
+            --build-dir "$env:GITHUB_WORKSPACE/nexusforce-build" --config Release --jobs 4
+      - name: Configure and build
+        working-directory: NexusWave
+        shell: pwsh
+        run: |
+          cmake -B build -A x64 -DNEXUSWAVE_NEXUSFORCE_PREFIX="$env:GITHUB_WORKSPACE/nexusforce-prefix"
+          cmake --build build --config Release

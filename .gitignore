@@ -1,0 +1,12 @@
+/build*/
+/.build/
+/.deps/
+compile_commands.json
+cmake-build-*/
+.idea/
+CMakePresets.json
+
+docs/AGENT.md
+docs/ARCHITECTURE.md
+docs/PARITY.md
+PLAN.md
